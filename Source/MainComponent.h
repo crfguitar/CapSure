@@ -108,6 +108,7 @@ private:
     juce::TextButton recordButton;
     juce::TextButton importFilesButton;
     juce::TextButton importFolderButton;
+    juce::ToggleButton copyOnImportCheckbox;
     juce::Label statusLabel;
     juce::Label titleLabel;
     std::unique_ptr<LibraryComponent> libraryComponent;

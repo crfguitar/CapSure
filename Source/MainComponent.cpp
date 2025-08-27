@@ -21,6 +21,7 @@ DarkLookAndFeel::DarkLookAndFeel()
     setColour(juce::TextButton::buttonOnColourId, juce::Colour(0xff1db954)); // Spotify green
     setColour(juce::TextButton::textColourOffId, juce::Colour(0xffffffff));
     setColour(juce::TextButton::textColourOnId, juce::Colour(0xff000000));
+    setColour(juce::ToggleButton::textColourId, juce::Colours::white);
     
     // Table colors  
     setColour(juce::TableListBox::backgroundColourId, juce::Colour(0xff1a1a1a));
@@ -312,6 +313,7 @@ void MainComponent::setupUI()
     addAndMakeVisible(recordButton);
     addAndMakeVisible(importFilesButton);
     addAndMakeVisible(importFolderButton);
+    addAndMakeVisible(copyOnImportCheckbox);
     addAndMakeVisible(statusLabel);
     addAndMakeVisible(*libraryComponent);
     addAndMakeVisible(*waveformComponent);
@@ -348,6 +350,9 @@ void MainComponent::setupUI()
     importFolderButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff8b5cf6));
     importFolderButton.onClick = [this]() { importAudioFolder(); };
     
+    copyOnImportCheckbox.setButtonText("Copy files to library on import");
+    copyOnImportCheckbox.setToggleState(false, juce::dontSendNotification);
+
     statusLabel.setText("Ready to record internal audio or import existing files", juce::dontSendNotification);
     statusLabel.setJustificationType(juce::Justification::centred);
 }
@@ -373,34 +378,51 @@ void MainComponent::paint(juce::Graphics& g)
 
 void MainComponent::resized()
 {
-    auto area = getLocalBounds().reduced(10);
+    auto bounds = getLocalBounds().reduced(10);
+
+    // Main vertical layout
+    juce::FlexBox mainFlexBox;
+    mainFlexBox.flexDirection = juce::FlexBox::Direction::column;
+    mainFlexBox.alignItems = juce::FlexBox::AlignItems::stretch;
+
+    // Title
+    mainFlexBox.items.add(juce::FlexItem(titleLabel).withHeight(40).withMargin({ 0, 0, 10, 0 }));
+
+    // Controls container
+    juce::FlexBox controlsFlexBox;
+    controlsFlexBox.flexDirection = juce::FlexBox::Direction::row;
+    controlsFlexBox.justifyContent = juce::FlexBox::JustifyContent::spaceBetween;
+    controlsFlexBox.alignItems = juce::FlexBox::AlignItems::center;
+
+    // Left side: Record button
+    controlsFlexBox.items.add(juce::FlexItem(recordButton).withWidth(200).withHeight(40));
+
+    // Right side: Import controls, grouped in their own FlexBox
+    juce::FlexBox importControlsBox;
+    importControlsBox.flexDirection = juce::FlexBox::Direction::row;
+    importControlsBox.justifyContent = juce::FlexBox::JustifyContent::flexEnd;
+    importControlsBox.alignItems = juce::FlexBox::AlignItems::center;
+    importControlsBox.items.add(juce::FlexItem(importFilesButton).withWidth(150).withHeight(40).withMargin({0, 5, 0, 5}));
+    importControlsBox.items.add(juce::FlexItem(importFolderButton).withWidth(130).withHeight(40).withMargin({0, 5, 0, 5}));
+    importControlsBox.items.add(juce::FlexItem(copyOnImportCheckbox).withWidth(220).withHeight(24).withMargin({0, 0, 0, 10}));
     
-    // Title area
-    titleLabel.setBounds(area.removeFromTop(40));
-    area.removeFromTop(10);
-    
-    // Controls area
-    auto controlsArea = area.removeFromTop(100);
-    
-    // Button row
-    auto buttonRow = controlsArea.removeFromTop(40);
-    recordButton.setBounds(buttonRow.removeFromLeft(200));
-    buttonRow.removeFromLeft(10);
-    importFilesButton.setBounds(buttonRow.removeFromLeft(150));
-    buttonRow.removeFromLeft(10);
-    importFolderButton.setBounds(buttonRow.removeFromLeft(130));
-    
-    controlsArea.removeFromTop(10);
-    statusLabel.setBounds(controlsArea.removeFromTop(30));
-    
-    area.removeFromTop(10);
-    
-    // Main content area - split between library and waveform
-    auto libraryArea = area.removeFromLeft(400);
-    area.removeFromLeft(10); // spacing
-    
-    libraryComponent->setBounds(libraryArea);
-    waveformComponent->setBounds(area);
+    controlsFlexBox.items.add(juce::FlexItem(importControlsBox).withFlex(1.0f));
+
+    mainFlexBox.items.add(juce::FlexItem(controlsFlexBox).withHeight(50).withMargin({ 0, 0, 10, 0 }));
+
+    // Status Label
+    mainFlexBox.items.add(juce::FlexItem(statusLabel).withHeight(30).withMargin({ 0, 0, 10, 0 }));
+
+    // Content Area (Library + Waveform)
+    juce::FlexBox contentFlexBox;
+    contentFlexBox.flexDirection = juce::FlexBox::Direction::row;
+    contentFlexBox.alignItems = juce::FlexBox::AlignItems::stretch;
+    contentFlexBox.items.add(juce::FlexItem(*libraryComponent).withFlex(1.0f).withMargin({ 0, 5, 0, 0 }));
+    contentFlexBox.items.add(juce::FlexItem(*waveformComponent).withFlex(2.0f).withMargin({ 0, 0, 0, 5 }));
+
+    mainFlexBox.items.add(juce::FlexItem(contentFlexBox).withFlex(1.0f));
+
+    mainFlexBox.performLayout(bounds);
 }
 
 void MainComponent::changeListenerCallback(juce::ChangeBroadcaster*)
@@ -472,7 +494,7 @@ void MainComponent::importAudioFiles()
                 statusLabel.setText("Importing " + juce::String(files.size()) + " files...", 
                                    juce::dontSendNotification);
                 
-                libraryManager->importAudioFiles(files, false); // Don't copy to library by default
+                libraryManager->importAudioFiles(files, copyOnImportCheckbox.getToggleState());
                 
                 statusLabel.setText("Imported " + juce::String(files.size()) + " audio files", 
                                    juce::dontSendNotification);
@@ -498,7 +520,7 @@ void MainComponent::importAudioFolder()
             {
                 statusLabel.setText("Importing files from folder...", juce::dontSendNotification);
                 
-                if (libraryManager->importFolder(folder, true, false)) // Recursive, don't copy
+                if (libraryManager->importFolder(folder, true, copyOnImportCheckbox.getToggleState()))
                 {
                     statusLabel.setText("Successfully imported audio files from folder", 
                                        juce::dontSendNotification);
