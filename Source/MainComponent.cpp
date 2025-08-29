@@ -472,7 +472,7 @@ void MainComponent::importAudioFiles()
                 statusLabel.setText("Importing " + juce::String(files.size()) + " files...", 
                                    juce::dontSendNotification);
                 
-                libraryManager->importAudioFiles(files, false); // Don't copy to library by default
+                libraryManager->importAudioFiles(files, true); // Copy to library by default
                 
                 statusLabel.setText("Imported " + juce::String(files.size()) + " audio files", 
                                    juce::dontSendNotification);
@@ -498,7 +498,7 @@ void MainComponent::importAudioFolder()
             {
                 statusLabel.setText("Importing files from folder...", juce::dontSendNotification);
                 
-                if (libraryManager->importFolder(folder, true, false)) // Recursive, don't copy
+                if (libraryManager->importFolder(folder, true, true)) // Recursive, copy
                 {
                     statusLabel.setText("Successfully imported audio files from folder", 
                                        juce::dontSendNotification);
