@@ -35,15 +35,7 @@ void LibraryManager::removeRecording(int index)
 {
     if (juce::isPositiveAndBelow(index, recordings.size()))
     {
-        auto recording = recordings[index];
         recordings.remove(index);
-        
-        // Optionally delete the file
-        if (recording.file.existsAsFile())
-        {
-            recording.file.deleteFile();
-        }
-        
         saveLibrary();
         sendChangeMessage();
     }
@@ -202,10 +194,10 @@ bool LibraryManager::importAudioFile(const juce::File& file, bool copyToLibrary)
     if (!file.existsAsFile() || !isAudioFile(file))
         return false;
     
-    // Check if already imported
+    // Check if already imported (check by full path to be more precise)
     for (const auto& recording : recordings)
     {
-        if (recording.file == file || recording.file.getFileName() == file.getFileName())
+        if (recording.file.getFullPathName() == file.getFullPathName())
             return false; // Already exists
     }
     
@@ -222,7 +214,8 @@ bool LibraryManager::importAudioFile(const juce::File& file, bool copyToLibrary)
     auto recording = createRecordingFromFile(targetFile);
     if (recording.durationInSeconds > 0)
     {
-        addRecording(recording);
+        // Add to recordings array directly (don't call addRecording to avoid duplicate saves)
+        recordings.add(recording);
         return true;
     }
     
@@ -254,10 +247,9 @@ bool LibraryManager::importFolder(const juce::File& folder, bool recursive, bool
     
     auto collectAudioFiles = [this, &audioFiles](const juce::File& dir, bool recurse)
     {
-        juce::DirectoryIterator iter(dir, recurse, "*", juce::File::findFiles);
-        while (iter.next())
+        for (juce::RangedDirectoryIterator i(dir, recurse, "*", juce::File::findFiles); i != juce::RangedDirectoryIterator{}; ++i)
         {
-            auto file = iter.getFile();
+            auto file = i->getFile();
             if (isAudioFile(file))
                 audioFiles.add(file);
         }

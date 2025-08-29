@@ -15,6 +15,11 @@ struct Recording
     double sampleRate = 0.0;
     int numChannels = 0;
     
+    // Metadata fields
+    juce::String artist;
+    juce::String genre;
+    int trackNumber = 0;
+    
     // Methods for serialization
     juce::ValueTree toValueTree() const;
     static Recording fromValueTree(const juce::ValueTree& vt);

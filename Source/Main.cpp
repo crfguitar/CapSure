@@ -61,7 +61,17 @@ public:
             setFullScreen (true);
            #else
             setResizable (true, true);
-            centreWithSize (getWidth(), getHeight());
+            
+            // Get screen dimensions and set a reasonable size
+            auto displays = juce::Desktop::getInstance().getDisplays();
+            auto mainDisplay = displays.getPrimaryDisplay();
+            auto screenArea = mainDisplay->userArea;
+            
+            // Set window size to 90% of screen width and 85% of screen height, with maximums
+            int windowWidth = juce::jmin(1200, (int)(screenArea.getWidth() * 0.9));
+            int windowHeight = juce::jmin(800, (int)(screenArea.getHeight() * 0.85));
+            
+            centreWithSize(windowWidth, windowHeight);
            #endif
 
             setVisible (true);

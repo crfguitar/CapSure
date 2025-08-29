@@ -23,6 +23,7 @@ public:
     // Access
     int getNumRecordings() const { return recordings.size(); }
     const Recording* getRecording(int index) const;
+    const juce::Array<Recording>& getAllRecordings() const { return recordings; }
     juce::Array<Recording> getFilteredRecordings(const juce::String& filter = {}) const;
     
     // Persistence

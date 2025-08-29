@@ -15,6 +15,9 @@ juce::ValueTree Recording::toValueTree() const
     vt.setProperty("timestamp", (juce::int64)timestamp.toMilliseconds(), nullptr);
     vt.setProperty("sampleRate", sampleRate, nullptr);
     vt.setProperty("numChannels", numChannels, nullptr);
+    vt.setProperty("artist", artist, nullptr);
+    vt.setProperty("genre", genre, nullptr);
+    vt.setProperty("trackNumber", trackNumber, nullptr);
     return vt;
 }
 
@@ -30,6 +33,11 @@ Recording Recording::fromValueTree(const juce::ValueTree& vt)
     r.sampleRate = (double)vt.getProperty("sampleRate");
     r.numChannels = (int)vt.getProperty("numChannels");
     r.timestamp = juce::Time((juce::int64)vt.getProperty("timestamp"));
+    
+    // Load metadata fields (with defaults for backward compatibility)
+    r.artist = vt.getProperty("artist", "").toString();
+    r.genre = vt.getProperty("genre", "").toString();
+    r.trackNumber = (int)vt.getProperty("trackNumber", 0);
     
     auto tagsString = vt.getProperty("tags").toString();
     r.tags.addTokens(tagsString, ",", "");

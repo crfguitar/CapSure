@@ -95,7 +95,7 @@ int LibraryComponent::getNumRows()
     return currentRecordings.size();
 }
 
-void LibraryComponent::paintRowBackground(juce::Graphics& g, int rowNumber, int width, int height, bool rowIsSelected)
+void LibraryComponent::paintRowBackground(juce::Graphics& g, int rowNumber, int /*width*/, int /*height*/, bool rowIsSelected)
 {
     if (rowIsSelected)
     {
@@ -133,6 +133,9 @@ void LibraryComponent::paintCell(juce::Graphics& g, int rowNumber, int columnId,
 
 void LibraryComponent::selectedRowsChanged(int lastRowSelected)
 {
+    // Ensure the table repaints to show selection
+    table.repaint();
+    
     if (onSelectionChanged)
         onSelectionChanged(lastRowSelected);
 }
@@ -162,6 +165,170 @@ void LibraryComponent::updateContent()
     repaint();
 }
 
+void LibraryComponent::mouseDown(const juce::MouseEvent& e)
+{
+    if (e.mods.isRightButtonDown())
+    {
+        // Find which row was clicked
+        auto rowClicked = table.getRowContainingPosition(e.getMouseDownX(), e.getMouseDownY() - table.getY());
+        if (juce::isPositiveAndBelow(rowClicked, currentRecordings.size()))
+        {
+            // Select the row first
+            table.selectRow(rowClicked);
+            showContextMenu(rowClicked, e);
+        }
+    }
+    else
+    {
+        Component::mouseDown(e);
+    }
+}
+
+void LibraryComponent::showContextMenu(int rowNumber, const juce::MouseEvent& /*e*/)
+{
+    if (!juce::isPositiveAndBelow(rowNumber, currentRecordings.size()))
+        return;
+        
+    const auto& recording = currentRecordings.getReference(rowNumber);
+    
+    juce::PopupMenu menu;
+    menu.addItem(1, "Edit Info...");
+    menu.addItem(2, "Delete from Library");
+    menu.addItem(3, "Export Audio...");
+    menu.addSeparator();
+    menu.addItem(4, "Copy Path");
+    menu.addItem(5, "Show in Explorer");
+    
+    menu.showMenuAsync(juce::PopupMenu::Options{}, [this, rowNumber, recording](int result)
+    {
+        switch (result)
+        {
+            case 1: // Edit Info
+                if (onRecordingEdit)
+                    onRecordingEdit(recording);
+                break;
+                
+            case 2: // Delete from Library
+                if (onRecordingRemove)
+                    onRecordingRemove(rowNumber);
+                break;
+                
+            case 3: // Export Audio
+                if (onRecordingExport)
+                    onRecordingExport(recording);
+                break;
+                
+            case 4: // Copy Path
+                juce::SystemClipboard::copyTextToClipboard(recording.file.getFullPathName());
+                break;
+                
+            case 5: // Show in Explorer
+                recording.file.revealToUser();
+                break;
+        }
+    });
+}
+
+//==============================================================================
+// Metadata Editor Component Implementation
+//==============================================================================
+
+MetadataEditorComponent::MetadataEditorComponent(Recording recording) : originalRecording(recording)
+{
+    addAndMakeVisible(nameLabel);
+    addAndMakeVisible(nameEditor);
+    addAndMakeVisible(artistLabel);
+    addAndMakeVisible(artistEditor);
+    addAndMakeVisible(tagsLabel);
+    addAndMakeVisible(tagsEditor);
+    addAndMakeVisible(genreLabel);
+    addAndMakeVisible(genreEditor);
+    addAndMakeVisible(trackLabel);
+    addAndMakeVisible(trackEditor);
+    addAndMakeVisible(saveButton);
+    addAndMakeVisible(cancelButton);
+    
+    // Setup labels
+    nameLabel.setText("Name:", juce::dontSendNotification);
+    artistLabel.setText("Artist:", juce::dontSendNotification);
+    tagsLabel.setText("Tags:", juce::dontSendNotification);
+    genreLabel.setText("Genre:", juce::dontSendNotification);
+    trackLabel.setText("Track #:", juce::dontSendNotification);
+    
+    // Setup editors with current values
+    nameEditor.setText(recording.name);
+    artistEditor.setText(recording.artist.isEmpty() ? "" : recording.artist);
+    tagsEditor.setText(recording.tags.joinIntoString(", "));
+    genreEditor.setText(recording.genre.isEmpty() ? "" : recording.genre);
+    trackEditor.setText(recording.trackNumber > 0 ? juce::String(recording.trackNumber) : "");
+    
+    // Setup buttons
+    saveButton.setButtonText("Save");
+    saveButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff1db954));
+    saveButton.onClick = [this]() { if (onSave) onSave(); };
+    
+    cancelButton.setButtonText("Cancel");
+    cancelButton.setColour(juce::TextButton::buttonColourId, juce::Colour(0xff666666));
+    cancelButton.onClick = [this]() { if (onCancel) onCancel(); };
+    
+    setSize(400, 300);
+}
+
+void MetadataEditorComponent::paint(juce::Graphics& g)
+{
+    g.fillAll(juce::Colour(0xff1e1e1e));
+    g.setColour(juce::Colour(0xff404040));
+    g.drawRect(getLocalBounds(), 2);
+}
+
+void MetadataEditorComponent::resized()
+{
+    auto area = getLocalBounds().reduced(15);
+    
+    auto setupRow = [&area](juce::Label& label, juce::TextEditor& editor)
+    {
+        auto row = area.removeFromTop(35);
+        label.setBounds(row.removeFromLeft(80));
+        row.removeFromLeft(5);
+        editor.setBounds(row);
+        area.removeFromTop(5);
+    };
+    
+    setupRow(nameLabel, nameEditor);
+    setupRow(artistLabel, artistEditor);
+    setupRow(genreLabel, genreEditor);
+    setupRow(trackLabel, trackEditor);
+    setupRow(tagsLabel, tagsEditor);
+    
+    area.removeFromTop(15);
+    auto buttonArea = area.removeFromTop(30);
+    
+    cancelButton.setBounds(buttonArea.removeFromRight(80));
+    buttonArea.removeFromRight(10);
+    saveButton.setBounds(buttonArea.removeFromRight(80));
+}
+
+Recording MetadataEditorComponent::getEditedRecording() const
+{
+    Recording edited = originalRecording;
+    edited.name = nameEditor.getText();
+    edited.artist = artistEditor.getText();
+    edited.genre = genreEditor.getText();
+    edited.trackNumber = trackEditor.getText().getIntValue();
+    
+    // Parse tags
+    edited.tags.clear();
+    auto tagsText = tagsEditor.getText();
+    if (!tagsText.isEmpty())
+    {
+        auto tagsList = juce::StringArray::fromTokens(tagsText, ",", "");
+        for (auto& tag : tagsList)
+            edited.tags.add(tag.trim());
+    }
+    
+    return edited;
+}
+
 //==============================================================================
 // Waveform Component Implementation  
 //==============================================================================
@@ -188,7 +355,16 @@ void WaveformComponent::setAudioFile(const juce::File& file)
     {
         currentFile = file;
         needsToLoadFile = true;
-        startTimer(100);
+        
+        if (file == juce::File() || !file.existsAsFile())
+        {
+            thumbnail.clear();
+            repaint();
+        }
+        else
+        {
+            startTimer(100);
+        }
     }
 }
 
@@ -205,6 +381,34 @@ void WaveformComponent::paint(juce::Graphics& g)
         thumbnail.drawChannels(g, area, 0.0, thumbnail.getTotalLength(), 1.0f);
         
         // Add border
+        g.setColour(juce::Colour(0xff404040));
+        g.drawRect(area, 1);
+        
+        // Show file info at the bottom
+        if (currentFile != juce::File())
+        {
+            g.setColour(juce::Colours::white.withAlpha(0.8f));
+            g.setFont(juce::FontOptions(12.0f));
+            auto infoText = currentFile.getFileNameWithoutExtension() + " (" + 
+                           juce::String(thumbnail.getTotalLength(), 1) + "s)";
+            g.drawText(infoText, area.removeFromBottom(20), juce::Justification::centredLeft);
+        }
+    }
+    else if (needsToLoadFile)
+    {
+        g.setColour(juce::Colours::white.withAlpha(0.6f));
+        g.setFont(juce::FontOptions(16.0f));
+        g.drawText("Loading audio file...", area, juce::Justification::centred);
+        
+        g.setColour(juce::Colour(0xff404040));
+        g.drawRect(area, 1);
+    }
+    else if (currentFile != juce::File() && !currentFile.existsAsFile())
+    {
+        g.setColour(juce::Colours::red.withAlpha(0.6f));
+        g.setFont(juce::FontOptions(16.0f));
+        g.drawText("Audio file not found", area, juce::Justification::centred);
+        
         g.setColour(juce::Colour(0xff404040));
         g.drawRect(area, 1);
     }
@@ -238,7 +442,10 @@ void WaveformComponent::loadAudioFile()
 {
     if (currentFile.existsAsFile())
     {
-        thumbnail.setSource(new juce::FileInputSource(currentFile));
+        auto* inputSource = new juce::FileInputSource(currentFile);
+        thumbnail.setSource(inputSource);
+        
+        // The thumbnail will update automatically via the change listener
     }
     else
     {
@@ -290,6 +497,21 @@ MainComponent::MainComponent()
     libraryComponent->onSelectionChanged = [this](int index)
     {
         onLibrarySelectionChanged(index);
+    };
+    
+    libraryComponent->onRecordingRemove = [this](int index)
+    {
+        onRecordingRemove(index);
+    };
+    
+    libraryComponent->onRecordingEdit = [this](const Recording& recording)
+    {
+        showMetadataEditor(recording);
+    };
+    
+    libraryComponent->onRecordingExport = [this](const Recording& recording)
+    {
+        onRecordingExport(recording);
     };
     
     libraryManager->addChangeListener(this);
@@ -443,12 +665,23 @@ void MainComponent::onLibrarySelectionChanged(int selectedIndex)
         if (juce::isPositiveAndBelow(selectedIndex, recordings.size()))
         {
             const auto& recording = recordings.getReference(selectedIndex);
-            waveformComponent->setAudioFile(recording.file);
+            // Ensure the file exists before attempting to load
+            if (recording.file.existsAsFile())
+            {
+                waveformComponent->setAudioFile(recording.file);
+                statusLabel.setText("Loaded: " + recording.name, juce::dontSendNotification);
+            }
+            else
+            {
+                waveformComponent->setAudioFile(juce::File());
+                statusLabel.setText("File not found: " + recording.file.getFullPathName(), juce::dontSendNotification);
+            }
         }
     }
     else
     {
         waveformComponent->setAudioFile(juce::File());
+        statusLabel.setText("Ready to record internal audio or import existing files", juce::dontSendNotification);
     }
 }
 
@@ -472,10 +705,21 @@ void MainComponent::importAudioFiles()
                 statusLabel.setText("Importing " + juce::String(files.size()) + " files...", 
                                    juce::dontSendNotification);
                 
+                int beforeCount = libraryManager->getNumRecordings();
                 libraryManager->importAudioFiles(files, false); // Don't copy to library by default
+                int afterCount = libraryManager->getNumRecordings();
+                int imported = afterCount - beforeCount;
                 
-                statusLabel.setText("Imported " + juce::String(files.size()) + " audio files", 
-                                   juce::dontSendNotification);
+                if (imported > 0)
+                {
+                    statusLabel.setText("Successfully imported " + juce::String(imported) + " audio files", 
+                                       juce::dontSendNotification);
+                }
+                else
+                {
+                    statusLabel.setText("No new audio files imported (files may already exist or be invalid)", 
+                                       juce::dontSendNotification);
+                }
             });
         }
     });
@@ -496,11 +740,21 @@ void MainComponent::importAudioFolder()
         {
             juce::MessageManager::callAsync([this, folder]()
             {
-                statusLabel.setText("Importing files from folder...", juce::dontSendNotification);
+                statusLabel.setText("Scanning folder for audio files...", juce::dontSendNotification);
                 
-                if (libraryManager->importFolder(folder, true, false)) // Recursive, don't copy
+                int beforeCount = libraryManager->getNumRecordings();
+                bool foundFiles = libraryManager->importFolder(folder, true, false); // Recursive, don't copy
+                int afterCount = libraryManager->getNumRecordings();
+                int imported = afterCount - beforeCount;
+                
+                if (imported > 0)
                 {
-                    statusLabel.setText("Successfully imported audio files from folder", 
+                    statusLabel.setText("Successfully imported " + juce::String(imported) + " audio files from folder", 
+                                       juce::dontSendNotification);
+                }
+                else if (foundFiles)
+                {
+                    statusLabel.setText("Found audio files but none were new (may already exist in library)", 
                                        juce::dontSendNotification);
                 }
                 else
@@ -511,4 +765,124 @@ void MainComponent::importAudioFolder()
             });
         }
     });
+}
+
+void MainComponent::onRecordingRemove(int index)
+{
+    auto recordings = libraryManager->getFilteredRecordings(libraryComponent->searchBox.getText());
+    if (juce::isPositiveAndBelow(index, recordings.size()))
+    {
+        const auto& recording = recordings.getReference(index);
+        
+        // Show confirmation dialog
+        juce::AlertWindow::showYesNoCancelBox(juce::AlertWindow::QuestionIcon,
+                                             "Delete Recording",
+                                             "Are you sure you want to remove \\\"" + recording.name + "\\\" from the library?\\n\\n" +
+                                             "The audio file will remain on disk.",
+                                             "Delete", "Cancel", {},
+                                             this,
+                                             juce::ModalCallbackFunction::create([this, recording](int result)
+                                             {
+                                                 if (result == 1) // Yes
+                                                 {
+                                                     // Find the actual index in the main recordings array and remove
+                                                     auto allRecordings = libraryManager->getAllRecordings();
+                                                     for (int i = 0; i < allRecordings.size(); ++i)
+                                                     {
+                                                         if (allRecordings[i].uid == recording.uid)
+                                                         {
+                                                             libraryManager->removeRecording(i);
+                                                             statusLabel.setText("Removed \\\"" + recording.name + "\\\" from library", juce::dontSendNotification);
+                                                             
+                                                             // Clear waveform if this was the selected recording
+                                                             if (selectedRecordingIndex == i)
+                                                             {
+                                                                 waveformComponent->setAudioFile(juce::File());
+                                                                 selectedRecordingIndex = -1;
+                                                             }
+                                                             break;
+                                                         }
+                                                     }
+                                                 }
+                                             }));
+    }
+}
+
+void MainComponent::showMetadataEditor(const Recording& recording)
+{
+    auto editorWindow = std::make_unique<juce::DocumentWindow>("Edit Recording Info", 
+                                                              juce::Colour(0xff1e1e1e), 
+                                                              juce::DocumentWindow::closeButton);
+    
+    auto editor = std::make_unique<MetadataEditorComponent>(recording);
+    auto* editorPtr = editor.get();
+    
+    editor->onSave = [this, editorPtr, recording]() 
+    {
+        auto editedRecording = editorPtr->getEditedRecording();
+        
+        // Find and update the recording in the library
+        auto allRecordings = libraryManager->getAllRecordings();
+        for (int i = 0; i < allRecordings.size(); ++i)
+        {
+            if (allRecordings[i].uid == recording.uid)
+            {
+                libraryManager->updateRecording(i, editedRecording);
+                statusLabel.setText("Updated info for \"" + editedRecording.name + "\"", juce::dontSendNotification);
+                break;
+            }
+        }
+        
+        if (auto* window = editorPtr->findParentComponentOfClass<juce::DocumentWindow>())
+            window->closeButtonPressed();
+    };
+    
+    editor->onCancel = [editorPtr]()
+    {
+        if (auto* window = editorPtr->findParentComponentOfClass<juce::DocumentWindow>())
+            window->closeButtonPressed();
+    };
+    
+    editorWindow->setContentOwned(editor.release(), true);
+    editorWindow->centreWithSize(420, 320);
+    editorWindow->setVisible(true);
+    editorWindow->toFront(true);
+    
+    // Keep the window alive (will be deleted when closed)
+    editorWindow.release();
+}
+
+void MainComponent::onRecordingExport(const Recording& recording)
+{
+    auto chooserFlags = juce::FileBrowserComponent::saveMode;
+    
+    juce::FileChooser chooser("Export audio file",
+                             juce::File::getSpecialLocation(juce::File::userDesktopDirectory),
+                             "*" + recording.file.getFileExtension());
+    
+    chooser.launchAsync(chooserFlags, [this, recording](const juce::FileChooser& fc)
+    {
+        auto targetFile = fc.getResult();
+        if (targetFile != juce::File{})
+        {
+            juce::MessageManager::callAsync([this, recording, targetFile]()
+            {
+                if (recording.file.copyFileTo(targetFile))
+                {
+                    statusLabel.setText("Exported \"" + recording.name + "\" to " + targetFile.getFullPathName(), 
+                                       juce::dontSendNotification);
+                }
+                else
+                {
+                    statusLabel.setText("Failed to export \"" + recording.name + "\"", 
+                                       juce::dontSendNotification);
+                }
+            });
+        }
+    });
+}
+
+void MainComponent::exportAudioFile(const Recording& recording)
+{
+    onRecordingExport(recording);
 }

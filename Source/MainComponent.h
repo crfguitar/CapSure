@@ -32,14 +32,19 @@ public:
     void selectedRowsChanged(int lastRowSelected) override;
 
     void resized() override;
+    void mouseDown(const juce::MouseEvent& e) override;
     
     std::function<void(int)> onSelectionChanged;
+    std::function<void(int)> onRecordingRemove;
+    std::function<void(const Recording&)> onRecordingEdit;
+    std::function<void(const Recording&)> onRecordingExport;
     
     juce::TextEditor searchBox;
 
 private:
     void changeListenerCallback(juce::ChangeBroadcaster* source) override;
     void updateContent();
+    void showContextMenu(int rowNumber, const juce::MouseEvent& e);
 
     LibraryManager& libraryManager;
     juce::TableListBox table;
@@ -75,6 +80,31 @@ private:
 };
 
 //==============================================================================
+class MetadataEditorComponent : public juce::Component
+{
+public:
+    MetadataEditorComponent(Recording recording);
+    ~MetadataEditorComponent() override = default;
+    
+    void paint(juce::Graphics& g) override;
+    void resized() override;
+    
+    Recording getEditedRecording() const;
+    
+    std::function<void()> onSave;
+    std::function<void()> onCancel;
+
+private:
+    Recording originalRecording;
+    
+    juce::Label nameLabel, artistLabel, tagsLabel, genreLabel, trackLabel;
+    juce::TextEditor nameEditor, artistEditor, tagsEditor, genreEditor, trackEditor;
+    juce::TextButton saveButton, cancelButton;
+    
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MetadataEditorComponent)
+};
+
+//==============================================================================
 /*
     Professional audio capture application with iTunes-style dark interface
 */
@@ -101,8 +131,12 @@ private:
     void updateRecordingStatus();
     void onRecordingComplete(const Recording& recording);
     void onLibrarySelectionChanged(int selectedIndex);
+    void onRecordingRemove(int index);
+    void onRecordingExport(const Recording& recording);
+    void showMetadataEditor(const Recording& recording);
     void importAudioFiles();
     void importAudioFolder();
+    void exportAudioFile(const Recording& recording);
     
     // UI Components
     juce::TextButton recordButton;
